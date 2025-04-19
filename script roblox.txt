@@ -1,0 +1,429 @@
+..Abaixo tem certamente a lib da nossa UI 
+
+local Lib = loadstring(game:HttpGet("https://raw.githubusercontent.com/7yhx/kwargs_Ui_Library/main/source.lua"))()
+
+local UI = Lib:Create{
+    Theme = "Dark", -- or any other theme
+    Size = UDim2.new(0, 555, 0, 400) -- default
+ }
+ 
+ local Main = UI:Tab{
+    Name = "MENU"
+ }
+ 
+ local Divider = Main:Divider{
+    Name = "MENU shit"
+ }
+ 
+ local QuitDivider = Main:Divider{
+    Name = "Sair"
+ }
+
+-- All functions have the Name, Description and Callback arguments so you can use them whenever ig yeah
+local KillAll = Divider:Button{
+    Name = "Kill all",
+    Description = "Kills all the players in the game!",
+    Callback = function()
+        print("All players killed.")
+    end
+ }
+ 
+ local LoopKillAll = Divider:Toggle{
+    Name = "Loop kill all",
+    Description = "Loop kills everyone in the game.",
+    Callback = function(State)
+        print("Kill state: ", State)
+    end
+ }
+ 
+ local OtherToggleStyle = Divider:Toggle{
+    Name = "2nd style of toggle",
+    Style = 2
+ }
+ 
+ local Players = Divider:Dropdown{
+    Name = "Player list",
+    Options = {"Player1", "Player2", "Player3", "Player4", "Player5"},
+    Callback = function(Value)
+        print(Value)
+    end
+ }
+ 
+ Divider:ColorPicker{
+    Name = "ESP color",
+    Default = Color3.fromRGB(0, 255, 255), -- default,
+    Callback = function(Value)
+        print(Value)
+    end
+ }
+ 
+ local Quit = QuitDivider:Button{
+    Name = "Closes the ui library.",
+    Callback = function()
+        UI:Quit{
+            -- Configurações do ESP
+local ESP_SETTINGS = {
+    Enabled = true,
+    TeamCheck = true,
+    ShowTeam = true, -- Mostrar aliados
+    ShowEnemies = true, -- Mostrar inimigos
+    Boxes = true,
+    Names = true,
+    Health = true,
+    Distance = true,
+    MaxDistance = 1000,
+    RefreshRate = 0.1,
+    AllyColor = Color3.fromRGB(0, 255, 0), -- Verde para aliados
+    EnemyColor = Color3.fromRGB(255, 0, 0), -- Vermelho para inimigos
+    FOV = {
+        Enabled = true,
+        Size = 120, -- Tamanho do FOV em graus
+        Color = Color3.fromRGB(255, 255, 255),
+        Transparency = 0.7
+    },
+    Arrows = {
+        Enabled = true,
+        Size = 20,
+        Color = Color3.fromRGB(255, 0, 0),
+        Transparency = 0.8
+    }
+}
+
+-- Serviços
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+-- Variáveis locais
+local localPlayer = Players.LocalPlayer
+local localTeam = localPlayer.Team
+local espObjects = {}
+local fovCircle
+local toggleKey = Enum.KeyCode.F5 -- Tecla para ativar/desativar
+
+-- Função para criar o FOV
+local function createFOV()
+    if not ESP_SETTINGS.FOV.Enabled then return end
+    
+    fovCircle = Instance.new("Part")
+    fovCircle.Name = "FOVCircle"
+    fovCircle.Anchored = true
+    fovCircle.CanCollide = false
+    fovCircle.Transparency = ESP_SETTINGS.FOV.Transparency
+    fovCircle.Color = ESP_SETTINGS.FOV.Color
+    fovCircle.Material = Enum.Material.Neon
+    fovCircle.Size = Vector3.new(0.1, 0.1, 0.1)
+    fovCircle.Shape = Enum.PartType.Cylinder
+    
+    local mesh = Instance.new("SpecialMesh", fovCircle)
+    mesh.MeshType = Enum.MeshType.Cylinder
+    
+    fovCircle.Parent = workspace
+    
+    return fovCircle
+end
+
+-- Função para atualizar o FOV
+local function updateFOV()
+    if not fovCircle or not ESP_SETTINGS.FOV.Enabled then return end
+    
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+    
+    fovCircle.Size = Vector3.new(0.1, ESP_SETTINGS.FOV.Size * 2, ESP_SETTINGS.FOV.Size * 2)
+    fovCircle.CFrame = camera.CFrame * CFrame.new(0, 0, -ESP_SETTINGS.FOV.Size) * CFrame.Angles(0, 0, math.rad(90))
+end
+
+-- Função para criar setas para inimigos fora da tela
+local function createArrow(player)
+    local arrow = Instance.new("ImageLabel")
+    arrow.Name = "ESPArrow_"..player.Name
+    arrow.Size = UDim2.new(0, ESP_SETTINGS.Arrows.Size, 0, ESP_SETTINGS.Arrows.Size)
+    arrow.BackgroundTransparency = 1
+    arrow.Image = "rbxassetid://5533211822" -- ID de uma imagem de seta
+    arrow.ImageColor3 = ESP_SETTINGS.Arrows.Color
+    arrow.ImageTransparency = ESP_SETTINGS.Arrows.Transparency
+    arrow.Visible = false
+    arrow.ZIndex = 10
+    arrow.Parent = game:GetService("CoreGui")
+    
+    return arrow
+end
+
+-- Função para atualizar setas
+local function updateArrows()
+    if not ESP_SETTINGS.Arrows.Enabled then return end
+    
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+    
+    for player, esp in pairs(espObjects) do
+        if player and esp and player.Character and esp.box.Adornee then
+            local character = player.Character
+            local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+            
+            if humanoidRootPart then
+                local screenPos, onScreen = camera:WorldToViewportPoint(humanoidRootPart.Position)
+                
+                if not onScreen and ESP_SETTINGS.ShowEnemies and player.Team ~= localPlayer.Team then
+                    -- Calcular posição da seta
+                    local dir = (humanoidRootPart.Position - camera.CFrame.Position).Unit
+                    local dotProduct = camera.CFrame.LookVector:Dot(dir)
+                    
+                    if dotProduct > 0 then
+                        local viewportSize = camera.ViewportSize
+                        local center = Vector2.new(viewportSize.X/2, viewportSize.Y/2)
+                        
+                        local angle = math.atan2(dir.X, dir.Z)
+                        local arrowAngle = -angle + math.pi/2
+                        
+                        local radius = math.min(viewportSize.X, viewportSize.Y)/2 - 50
+                        local arrowPos = center + Vector2.new(
+                            math.cos(angle) * radius,
+                            math.sin(angle) * radius
+                        )
+                        
+                        esp.arrow.Position = UDim2.new(0, arrowPos.X, 0, arrowPos.Y)
+                        esp.arrow.Rotation = math.deg(arrowAngle)
+                        esp.arrow.Visible = true
+                    else
+                        esp.arrow.Visible = false
+                    end
+                else
+                    esp.arrow.Visible = false
+                end
+            end
+        end
+    end
+end
+
+-- Função para criar ESP para um jogador
+local function createESP(player)
+    if player == localPlayer then return end
+    
+    local character = player.Character or player.CharacterAdded:Wait()
+    local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    local humanoid = character:WaitForChild("Humanoid")
+    
+    -- Criar objetos de ESP
+    local esp = {
+        player = player,
+        box = Instance.new("BoxHandleAdornment"),
+        nameLabel = Instance.new("TextLabel"),
+        healthLabel = Instance.new("TextLabel"),
+        distanceLabel = Instance.new("TextLabel"),
+        arrow = createArrow(player)
+    }
+    
+    -- Configurar a caixa
+    esp.box.Name = "ESPBox"
+    esp.box.Adornee = humanoidRootPart
+    esp.box.AlwaysOnTop = true
+    esp.box.ZIndex = 5
+    esp.box.Size = Vector3.new(3, 5, 3)
+    esp.box.Transparency = 0.7
+    esp.box.Color3 = player.Team == localPlayer.Team and ESP_SETTINGS.AllyColor or ESP_SETTINGS.EnemyColor
+    esp.box.Parent = humanoidRootPart
+    
+    -- Configurar a label de nome
+    esp.nameLabel.Name = "ESPName"
+    esp.nameLabel.Size = UDim2.new(0, 200, 0, 20)
+    esp.nameLabel.BackgroundTransparency = 1
+    esp.nameLabel.TextSize = 14
+    esp.nameLabel.TextColor3 = player.Team == localPlayer.Team and ESP_SETTINGS.AllyColor or ESP_SETTINGS.EnemyColor
+    esp.nameLabel.TextStrokeTransparency = 0
+    esp.nameLabel.Text = player.Name
+    esp.nameLabel.Parent = game:GetService("CoreGui")
+    
+    -- Configurar a label de saúde
+    esp.healthLabel.Name = "ESPHealth"
+    esp.healthLabel.Size = UDim2.new(0, 200, 0, 20)
+    esp.healthLabel.BackgroundTransparency = 1
+    esp.healthLabel.TextSize = 14
+    esp.healthLabel.TextColor3 = Color3.new(1, 1, 1)
+    esp.healthLabel.TextStrokeTransparency = 0
+    esp.healthLabel.Text = "HP: "..math.floor(humanoid.Health)
+    esp.healthLabel.Parent = game:GetService("CoreGui")
+    
+    -- Configurar a label de distância
+    esp.distanceLabel.Name = "ESPDistance"
+    esp.distanceLabel.Size = UDim2.new(0, 200, 0, 20)
+    esp.distanceLabel.BackgroundTransparency = 1
+    esp.distanceLabel.TextSize = 14
+    esp.distanceLabel.TextColor3 = Color3.new(1, 1, 1)
+    esp.distanceLabel.TextStrokeTransparency = 0
+    esp.distanceLabel.Parent = game:GetService("CoreGui")
+    
+    -- Atualizar conexões
+    humanoid.HealthChanged:Connect(function(health)
+        esp.healthLabel.Text = "HP: "..math.floor(health)
+    end)
+    
+    player:GetPropertyChangedSignal("Team"):Connect(function()
+        local color = player.Team == localPlayer.Team and ESP_SETTINGS.AllyColor or ESP_SETTINGS.EnemyColor
+        esp.box.Color3 = color
+        esp.nameLabel.TextColor3 = color
+    end)
+    
+    -- Armazenar na tabela
+    espObjects[player] = esp
+end
+
+-- Função para remover ESP de um jogador
+local function removeESP(player)
+    local esp = espObjects[player]
+    if esp then
+        esp.box:Destroy()
+        esp.nameLabel:Destroy()
+        esp.healthLabel:Destroy()
+        esp.distanceLabel:Destroy()
+        esp.arrow:Destroy()
+        espObjects[player] = nil
+    end
+end
+
+-- Função para atualizar as posições do ESP
+local function updateESP()
+    if not ESP_SETTINGS.Enabled then return end
+    
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+    
+    for player, esp in pairs(espObjects) do
+        if player and esp and player.Character and esp.box.Adornee then
+            local character = player.Character
+            local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+            local humanoid = character:FindFirstChild("Humanoid")
+            
+            if humanoidRootPart and humanoid then
+                -- Verificar se é para mostrar
+                local show = false
+                local isEnemy = player.Team ~= localPlayer.Team
+                
+                if (isEnemy and ESP_SETTINGS.ShowEnemies) or (not isEnemy and ESP_SETTINGS.ShowTeam) then
+                    local distance = (humanoidRootPart.Position - camera.CFrame.Position).Magnitude
+                    show = distance <= ESP_SETTINGS.MaxDistance
+                end
+                
+                -- Atualizar visibilidade
+                esp.box.Visible = show and ESP_SETTINGS.Boxes
+                esp.nameLabel.Visible = show and ESP_SETTINGS.Names
+                esp.healthLabel.Visible = show and ESP_SETTINGS.Health
+                esp.distanceLabel.Visible = show and ESP_SETTINGS.Distance
+                
+                if show then
+                    -- Atualizar posições das labels na tela
+                    local screenPos, onScreen = camera:WorldToViewportPoint(humanoidRootPart.Position)
+                    
+                    if onScreen then
+                        esp.nameLabel.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y - 50)
+                        esp.healthLabel.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y - 35)
+                        esp.distanceLabel.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y - 20)
+                        esp.distanceLabel.Text = math.floor((humanoidRootPart.Position - camera.CFrame.Position).Magnitude).."m"
+                    else
+                        esp.nameLabel.Visible = false
+                        esp.healthLabel.Visible = false
+                        esp.distanceLabel.Visible = false
+                    end
+                end
+            else
+                removeESP(player)
+            end
+        else
+            removeESP(player)
+        end
+    end
+end
+
+-- Função para ativar/desativar o ESP
+local function toggleESP(state)
+    ESP_SETTINGS.Enabled = state
+    
+    if state then
+        -- Ativar
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= localPlayer and player.Character then
+                createESP(player)
+            end
+        end
+        
+        if ESP_SETTINGS.FOV.Enabled and not fovCircle then
+            createFOV()
+        end
+    else
+        -- Desativar
+        for player in pairs(espObjects) do
+            removeESP(player)
+        end
+        
+        if fovCircle then
+            fovCircle:Destroy()
+            fovCircle = nil
+        end
+    end
+end
+
+-- Conectar eventos de jogadores
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        if ESP_SETTINGS.Enabled then
+            createESP(player)
+        end
+    end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    removeESP(player)
+end)
+
+-- Atualizar quando o time mudar
+localPlayer:GetPropertyChangedSignal("Team"):Connect(function()
+    localTeam = localPlayer.Team
+    -- Atualizar cores de todos os ESPs
+    for player, esp in pairs(espObjects) do
+        local color = player.Team == localTeam and ESP_SETTINGS.AllyColor or ESP_SETTINGS.EnemyColor
+        esp.box.Color3 = color
+        esp.nameLabel.TextColor3 = color
+    end
+end)
+
+-- Inicializar ESP para jogadores existentes
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= localPlayer then
+        if player.Character then
+            createESP(player)
+        end
+        player.CharacterAdded:Connect(function()
+            createESP(player)
+        end)
+    end
+end
+
+-- Criar FOV inicial
+if ESP_SETTINGS.FOV.Enabled then
+    createFOV()
+end
+
+-- Loop de atualização
+RunService.RenderStepped:Connect(function()
+    updateESP()
+    updateFOV()
+    updateArrows()
+end)
+
+-- Configurar tecla de ativação/desativação
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if not gameProcessed and input.KeyCode == toggleKey then
+        toggleESP(not ESP_SETTINGS.Enabled)
+        print("ESP "..(ESP_SETTINGS.Enabled and "ativado" or "desativado"))
+    end
+end)
+
+-- Mensagem inicial
+print("ESP carregado! Pressione F5 para ativar/desativar.")
+print("Configurações:")
+print("- Aliados: Verde")
+print("- Inimigos: Vermelho")
+print("- FOV: "..(ESP_SETTINGS.FOV.Enabled and "Ativado" or "Desativado"))
+print("- Setas: "..(ESP_SETTINGS.Arrows.Enabled and "Ativadas" or "Desativadas"))
